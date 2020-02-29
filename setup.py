@@ -27,8 +27,9 @@ setup(
         "Topic :: Scientific/Engineering",
     ],
     install_requires=[
+        'numpy',
         'pylsl',
-        'numpy'
+        'pyserial'
     ],
     entry_points="""
     # -*- Entry points: -*-
