@@ -16,7 +16,8 @@ setup(
     packages=[
         'mindwavelsl',
     ],
-    long_description="See this page: https://github.com/gmierz/mindwave-lsl",
+    long_description="See this page: https://github.com/gmierz/mindwave-lsl \n"
+                     "After installation, run with `mindwavelsl`.",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
