@@ -5,10 +5,10 @@ from setuptools import setup
 
 setup(
     name = "mindwavelsl",
-    version = "1.0",
+    version = "1.0.1",
     author = "Gregory Mierzwinski",
     author_email = "gmierz1@live.ca",
-    description = ("A package to send Mindwave Mobile 2 data over Lab Streaming "
+    description = ("A package to send Mindwave EEG data over Lab Streaming "
                    "Layer (LSL)."),
     license = "GPLv3",
     keywords = "mindwave lab streaming layer lsl",
@@ -16,7 +16,7 @@ setup(
     packages=[
         'mindwavelsl',
     ],
-    long_description="See this page: https://github.com/gmierz/mindwave-lsl \n"
+    long_description="See this page `https://github.com/gmierz/mindwave-lsl`. "
                      "After installation, run with `mindwavelsl`.",
     classifiers=[
         "Programming Language :: Python :: 3",

@@ -2,7 +2,13 @@
 
 This tool is for Mindwave EEG products and it was tested with Mindwave Mobile 2. You can use it to take data from a ThinkGear Connecter service using telnet and output it in a Lab Streaming Layer (LSL) outlet.
 
-Run the following to clone the library and install the tool:
+This package is available through pip
+```
+pip install mindwavelsl
+mindwavelsl
+```
+
+If pip doesn't work, run the following to clone the library and install the tool:
 ```
 cd ~
 git clone https://github.com/gmierz/mindwave-lsl
