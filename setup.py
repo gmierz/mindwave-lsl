@@ -4,7 +4,7 @@ Sets up the CLI and modules for `mindwave-lsl`.
 from setuptools import setup
 
 setup(
-    name = "mindwave-lsl",
+    name = "mindwavelsl",
     version = "1.0",
     author = "Gregory Mierzwinski",
     author_email = "gmierz1@live.ca",
