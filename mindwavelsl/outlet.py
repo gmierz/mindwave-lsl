@@ -1,39 +1,19 @@
 import collections
 import json
 import numpy as np
+import os
 import pylsl as lsl
 import uuid
-from telnetlib import Telnet
 
+from mindwavelsl.connectors import TelnetConnector, MindwavePythonWrapper
+from mindwavelsl.constants import (
+	EXPECTED_FIELDS,
+	MINDWAVE_PYTHON_ORIG,
+	MINDWAVE_PYTHON_FORK
+)
 from mindwavelsl.logger import MindwaveLogger
 
 log = MindwaveLogger("mindwave-outlet")
-
-EXPECTED_FIELDS = [
-	"rawEegMulti.ch1",
-	"rawEegMulti.ch2",
-	"rawEegMulti.ch3",
-	"rawEegMulti.ch4",
-	"rawEegMulti.ch5",
-	"rawEegMulti.ch6",
-	"rawEegMulti.ch7",
-	"rawEegMulti.ch8",
-	"rawEeg",
-	"familiarity",
-	"mentalEffort",
-	"blinkStrength",
-	"poorSignalLevel",
-	"eSense.attention",
-	"eSense.meditation",
-	"eegPower.delta",
-	"eegPower.theta",
-	"eegPower.lowAlpha",
-	"eegPower.highAlpha",
-	"eegPower.lowBeta",
-	"eegPower.highBeta",
-	"eegPower.lowGamma",
-	"eegPower.highGamma",
-]
 
 
 class MindwaveLSL(object):
@@ -42,14 +22,46 @@ class MindwaveLSL(object):
 	provides this data in an LSL outlet.
 	"""
 
-	def __init__(self, host, port):
+	def __init__(
+			self,
+			host,
+			port,
+			file_outlet_path='',
+			run_lsl=True,
+			mindwave_python_connect=False,
+			device='',
+			headset_id='',
+			open_serial=True
+		):
+		"""
+		Initializes the MindwaveLSL outlet.
+
+		:param str host: Host to find the data on.
+		:param int port: Port to find the data on.
+		:param str file_outlet_path: Path to where the data
+			will be output, if not set, no data will be
+			saved.
+		:param bool run_lsl: If set to False, LSL outlet
+			won't be created during the setup step.
+		"""
 		self.host = host
 		self.port = port
 		self.outlet = None
+		self.file_outlet = None
+		self.outlets = []
 
+		# Standard settings
 		self._outlet_uuid = str(uuid.uuid4())
 		self._channels = []
 		self._access_point = None
+		self._file_outlet_path = file_outlet_path
+		self._run_lsl = run_lsl
+
+		# Mindwave-python settings
+		self._mindwave_python_connect = mindwave_python_connect
+		self._device = device
+		self._headset_id = headset_id
+		self._open_serial = open_serial
 
 	def _check_started(self):
 		"""
@@ -58,7 +70,7 @@ class MindwaveLSL(object):
 		"""
 		if not self.started():
 			raise Exception(
-				"Telnet access point was not started. Run `setup_lsl()` first."
+				"Telnet access point was not started. Run `setup()` first."
 			)
 		return True
 
@@ -68,7 +80,7 @@ class MindwaveLSL(object):
 		"""
 		return self._access_point != None
 
-	def setup_lsl(self):
+	def setup(self):
 		"""
 		Starts a telnet connection to the ThinkGear Controller,
 		and prepares an outlet for the data.
@@ -79,14 +91,37 @@ class MindwaveLSL(object):
 		# Prepare outlet
 		log.info("Creating outlet and channels...")
 		self._setup_channels()
-		log.debug("Creating outlet...")
-		self._setup_outlet()
-		log.info("Mindwave outlet created")
+		log.debug("Creating outlets...")
 
-		# Setup telnet
-		log.info("Connecting to ThinkGear Connector...")
-		self._access_point = Telnet(self.host, self.port)
-		log.info("Connected with telnet")
+		if self._run_lsl:
+			self._setup_lsl_outlet()
+		if self._file_outlet_path:
+			self._setup_file_outlet()
+
+		if not self.outlets:
+			raise Exception(
+				"Cannot run since no outlet was created.")
+		else:
+			log.info("Mindwave outlets created")
+
+		# Setup the Mindwave connector
+		if self._mindwave_python_connect:
+			try:
+				import mindwavelsl.vendor.mindwave as mindwave
+			except:
+				raise Exception(
+					"`mindwave` module could not be found. It needs to be "
+					"installed manually from one of these two sources: \n%s\n%s" %
+					(MINDWAVE_PYTHON_ORIG, MINDWAVE_PYTHON_FORK)
+				)
+
+			self._access_point = MindwavePythonWrapper(
+				self._device, self._headset_id, self._open_serial
+			)
+		else:
+			self._access_point = TelnetConnector(self.host, self.port)
+
+		self._access_point.setup()
 
 		return self._access_point
 
@@ -102,7 +137,7 @@ class MindwaveLSL(object):
 
 		return self._channels
 
-	def _setup_outlet(self):
+	def _setup_lsl_outlet(self):
 		"""
 		Sets up the LSL output for the telnet data.
 		"""
@@ -120,20 +155,32 @@ class MindwaveLSL(object):
 
 		self.outlet = lsl.StreamOutlet(stream_info)
 
+		self.outlets.append(self.outlet)
 		return self.outlet
+
+
+	def _setup_file_outlet(self):
+		"""
+		Sets up the LSL output for the telnet data.
+		"""
+		self.file_outlet = FileOutlet(self._file_outlet_path)
+
+		self.file_outlet.set_header(EXPECTED_FIELDS)
+		self.file_outlet.setup_outlet()
+
+		self.outlets.append(self.file_outlet)
+		return self.file_outlet
 
 	def write(self, data):
 		"""
-		Writes data to the telnet connection.
+		Writes data to the connector.
 		:param dict/str data: The data to send in either a
 			dict or str form.
 		"""
 		self._check_started()
 
 		try:
-			if type(data) == dict:
-				data = json.dumps(data)
-			self._access_point.write(str.encode(data))
+			self._access_point.write(data)
 		except Exception as e:
 			log.error(
 				"Unknow error occured while WRITING this response: "
@@ -153,7 +200,7 @@ class MindwaveLSL(object):
 
 		response = None
 		try:
-			response = self._access_point.read_until(b"\r")
+			response = self._access_point.read()
 		except KeyboardInterrupt as e:
 			raise e
 		except Exception as e:
@@ -161,6 +208,7 @@ class MindwaveLSL(object):
 			log.error(
 				"%s - %s" % (e.__class__.__name__, e)
 			)
+
 		return response
 
 	def make_sample(self, response):
@@ -168,6 +216,11 @@ class MindwaveLSL(object):
 		Builds up a sample using the channels as a
 		reference for what fields we should look for.
 		"""
+		if type(response) == list:
+			# If the response is a list, then return it
+			# immediately because it's already in sample form.
+			return response
+
 		sample = []
 		for chan in self._channels:
 			sample.append(response.get(chan.metric, np.nan))
@@ -175,6 +228,7 @@ class MindwaveLSL(object):
 			log.warning("Poor signal quality, check headset fitting...")
 		else:
 			log.debug(sample)
+
 		return sample
 
 	def run(self):
@@ -188,11 +242,10 @@ class MindwaveLSL(object):
 				if not response:
 					continue
 
-				sample = self.make_sample(
-					flatten(json.loads(response))
-				)
+				sample = self.make_sample(response)
 
-				self.outlet.push_sample(sample)
+				for outlet in self.outlets:
+					outlet.push_sample(sample)
 			except KeyboardInterrupt as e:
 				raise e	
 			except Exception as e:
@@ -201,7 +254,7 @@ class MindwaveLSL(object):
 					"%s - %s" % (e.__class__.__name__, e)
 				)	
 
-class _Channel:
+class _Channel(object):
 	"""
 	Container class for each channel to simplify setup,
 	data parsing, and generation.
@@ -222,16 +275,60 @@ class _Channel:
 		chan.append_child_value("unit", self.unit)
 
 
-def flatten(d, parent_key='', sep='.'):
+class FileOutlet(object):
 	"""
-	Used to flatten the response and make it simpler to
-	parse into an LSL sample.
+	Used to output gathered data to a file.
 	"""
-	items = []
-	for k, v in d.items():
-		new_key = parent_key + sep + k if parent_key else k
-		if isinstance(v, collections.MutableMapping):
-			items.extend(flatten(v, new_key, sep=sep).items())
-		else:
-			items.append((new_key, v))
-	return dict(items)
+	def __init__(self, path):
+		"""
+		Initialize the FileOutlet.
+
+		:param str path: Path to the output location.
+		"""
+		self.path = path
+		self.file = 'mindwave-output.csv'
+		self._header = []
+		self._filehandler = None
+
+	def _sample_to_csv(self, sample):
+		"""
+		Converts a sample to a CSV entry.
+		:param list sample: Sample to convert.
+		"""
+		return ",".join([str(s) for s in sample])
+
+	def _make_dirs(self):
+		"""
+		Makes the output directory.
+		"""
+		if self.path.endswith('.csv'):
+			path, file = os.path.split(self.path)
+			self.path = path
+			self.file = file
+		os.makedirs(self.path, exist_ok=True)
+
+	def set_header(self, header):
+		"""
+		Sets up the CSV file header.
+		:param list header: Header for each of the data columns.
+		"""
+		self._header = header
+
+	def setup_outlet(self):
+		"""
+		Sets up the file that data will be written to.
+		"""
+		if not self._header:
+			raise Exception("FileOutlet CSV header is empty.")
+
+		self._make_dirs()
+
+		self._filehandler = open(os.path.join(self.path, self.file), "a", 5)
+		self.push_sample(self._header)
+
+	def push_sample(self, sample):
+		"""
+		Push a sample that conforms to the given header.
+		:param list sample: Data sample to write.
+		"""
+		self._filehandler.write(self._sample_to_csv(sample) + "\n")
